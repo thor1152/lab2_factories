@@ -13,5 +13,8 @@
   },
   "support": {
     "description": "Customer support, help requests, and technical issues"
+  },
+  "Testing": {
+    "description": "test related emails including test, trial, testest"
   }
 }

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
 
 from app.services.email_topic_inference import EmailTopicInferenceService
 from app.dataclasses import Email
@@ -15,7 +15,8 @@ router = APIRouter()
 class EmailRequest(BaseModel):
     subject: str
     body: str
-    store_email: bool = False
+    mode: Literal["topic", "similar_email"] = "topic"
+    store_email: bool = True
     ground_truth: Optional[str] = None
 
 
@@ -44,10 +45,6 @@ class TopicAddRequest(BaseModel):
 
 
 def _data_file_path(filename: str) -> str:
-    """
-    routes.py is at: <project_root>/app/api/routes.py
-    We want:         <project_root>/data/<filename>
-    """
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     return os.path.join(project_root, "data", filename)
 
@@ -74,14 +71,11 @@ async def classify_email(request: EmailRequest):
     try:
         inference_service = EmailTopicInferenceService()
         email = Email(subject=request.subject, body=request.body)
-
-        # Run inference
-        result = inference_service.classify_email(email)
-
-        # IMPORTANT: initialize so response works even when store_email=False
+            
+        result = inference_service.classify_email(email, mode=request.mode)
+        # store email updates    
         stored_email_id: Optional[int] = None
 
-        # Optional: store the email (with optional ground truth)
         if request.store_email:
             factory = FeatureGeneratorFactory()
             feat = factory.generate_all_features(email, generator_names=["email_embeddings"])
@@ -108,10 +102,6 @@ async def classify_email(request: EmailRequest):
                 }
             )
 
-            # Debug: confirm filepath and keys
-            print("Saving to:", _data_file_path("emails.json"))
-            print("Embedding feature keys:", list(feat.keys()))
-
             _save_json("emails.json", emails)
             stored_email_id = next_id
 
@@ -137,9 +127,7 @@ async def topics():
 
 @router.post("/topics")
 async def create_topics(request: TopicAddRequest):
-    """
-    Add a new topic and persist it to <project_root>/data/topic_keywords.json
-    """
+   #add new topic
     try:
         topics = _load_json("topic_keywords.json", default={})
         if not isinstance(topics, dict):

@@ -16,6 +16,16 @@ class EmailClassifierModel:
 
         # Pre-compute embeddings for all topic descriptions
         self.topic_embeddings = self._compute_topic_embeddings()
+        
+        self.stored_emails = self._load_stored_emails()
+    
+    def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
+        dot = float(np.dot(a, b))
+        a_norm = float(np.linalg.norm(a))
+        b_norm = float(np.linalg.norm(b))
+        if a_norm == 0.0 or b_norm == 0.0:
+            return 0.0
+        return dot / (a_norm * b_norm)
     
     def _load_topic_data(self) -> Dict[str, Dict[str, Any]]:
         """Load topic data from data/topic_keywords.json"""
@@ -81,8 +91,8 @@ class EmailClassifierModel:
 
         # Cosine similarity is between -1 and 1, but for text it's usually positive
         # Normalize to 0-1 range for better interpretability
+        cosine_similarity = self._cosine_similarity(email_embedding, topic_embedding)
         normalized_score = (cosine_similarity + 1) / 2
-
         return float(normalized_score)
     
     def get_topic_description(self, topic: str) -> str:
@@ -92,3 +102,63 @@ class EmailClassifierModel:
     def get_all_topics_with_descriptions(self) -> Dict[str, str]:
         """Get all topics with their descriptions"""
         return {topic: self.get_topic_description(topic) for topic in self.topics}
+    
+    def _emails_file_path(self) -> str:
+        return os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "data",
+            "emails.json",
+        )
+
+    def _load_stored_emails(self) -> List[Dict[str, Any]]:
+        path = self._emails_file_path()
+        if not os.path.exists(path):
+            return []
+        with open(path, "r") as f:
+            try:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+            except json.JSONDecodeError:
+                return []
+    
+    def predict_from_stored_emails(self, features: Dict[str, Any]):
+        """
+        Predict by nearest stored email.
+        Returns (predicted_topic, matched_email_id, similarity_score)
+        """
+        email_embedding = features.get("email_embeddings_average_embedding", None)
+        if email_embedding is None:
+            return ("unknown", None, None)
+
+        if isinstance(email_embedding, list):
+            email_embedding = np.array(email_embedding)
+
+        best_score = -1.0
+        best_topic = None
+        best_id = None
+
+        for item in self.stored_emails:
+            gt = item.get("ground_truth")
+            emb = item.get("embedding")
+
+            # Only use stored emails that have ground_truth + embedding
+            if not gt or emb is None:
+                continue
+
+            emb_np = np.array(emb) if isinstance(emb, list) else emb
+            score = self._cosine_similarity(email_embedding, emb_np)
+
+            if score > best_score:
+                best_score = score
+                best_topic = gt
+                best_id = item.get("id")
+
+        if best_topic is None:
+            return ("unknown", None, None)
+
+        return (best_topic, best_id, float(best_score))
+    def refresh(self) -> None:
+        self.topic_data = self._load_topic_data()
+        self.topics = list(self.topic_data.keys())
+        self.topic_embeddings = self._compute_topic_embeddings()
+        self.stored_emails = self._load_stored_emails()

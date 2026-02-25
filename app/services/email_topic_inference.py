@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Literal, Optional
 from app.models.similarity_model import EmailClassifierModel
 from app.features.factory import FeatureGeneratorFactory
 from app.dataclasses import Email
@@ -10,15 +10,19 @@ class EmailTopicInferenceService:
         self.model = EmailClassifierModel()
         self.feature_factory = FeatureGeneratorFactory()
     
-    def classify_email(self, email: Email) -> Dict[str, Any]:
+    def classify_email(self, email: Email, mode: Literal["topic", "similar_email"] = "topic") -> Dict[str, Any]:
         """Classify an email into topics using generated features"""
         
         # Step 1: Generate features from email
         features = self.feature_factory.generate_all_features(email)
         
         # Step 2: Classify using features
-        predicted_topic = self.model.predict(features)
-        topic_scores = self.model.get_topic_scores(features)
+        if mode == "similar_email":
+            predicted_topic, matched_email_id, _score = self.model.predict_from_stored_emails(features)
+            topic_scores = self.model.get_topic_scores(features)  # keep for visibility/debug
+        else:
+            predicted_topic = self.model.predict(features)
+            topic_scores = self.model.get_topic_scores(features)
         
         # Return comprehensive results
         return {
