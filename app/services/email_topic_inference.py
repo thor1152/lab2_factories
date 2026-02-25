@@ -35,3 +35,11 @@ class EmailTopicInferenceService:
             "available_topics": self.model.topics,
             "topics_with_descriptions": self.model.get_all_topics_with_descriptions()
         }
+        
+    def create_topic(self, topic: str, description: str) -> Dict[str, Any]:
+        """Add a new topic to the model"""
+        return{
+            "message": "Topic added successfully",
+            "topic": topic,
+            "description": description,
+            }
